@@ -7,6 +7,7 @@ import GUI from 'lil-gui'
 import overlayVertexShader from './shaders/overlay/vertex.glsl'
 import overlayFragmentShader from './shaders/overlay/fragment.glsl'
 import { gsap } from 'gsap'
+import Stats from 'stats-js'
 
 /**
  * Core objects
@@ -15,6 +16,9 @@ const canvas = document.querySelector('canvas.webgl');
 const renderer = new THREE.WebGLRenderer( { canvas });
 renderer.setClearColor('#201919')
 const scene = new THREE.Scene()
+var stats = new Stats()
+stats.showPanel(0) // 0: fps, 1: ms, 2: mb, 3+: custom
+document.body.appendChild(stats.dom)
 
 /**
  * Loader Setup
@@ -102,23 +106,23 @@ const debugObject = {
         height: 3
     },
     seperation: {
-        power: 1.,
-        range: 1.,
+        power: 4.,
+        range: 0.1,
     },
     alignment: {
-        power: 1.,
-        range: 1.,
+        power: 0.6,
+        range: 2.,
     },
     cohesion: {
-        power: 1.,
-        range: 1.,
+        power: 1.5,
+        range: 3.,
     }
 }
 const gui = new GUI();
 gui.add(debugObject, 'timeSpeed').min(0).max(3).step(0.1);
 const seperation = gui.addFolder( 'Seperation' );
-seperation.add(debugObject.seperation, 'power').min(0).max(3).step(0.1);
-seperation.add(debugObject.seperation, 'range').min(0).max(3).step(0.1);
+seperation.add(debugObject.seperation, 'power').min(0).max(6).step(0.1);
+seperation.add(debugObject.seperation, 'range').min(0).max(1).step(0.05);
 const alignment = gui.addFolder( 'Alignment' );
 alignment.add(debugObject.alignment, 'power').min(0).max(3).step(0.1);
 alignment.add(debugObject.alignment, 'range').min(0).max(3).step(0.1);
@@ -190,27 +194,18 @@ loadingManager.onProgress = (_, itemsLoaded, itemsTotal) =>
   */
 
  const boids = []
- const boidCount = 100;
+ const boidCount = 200;
  while (boids.length < boidCount) {
     const boidG = new THREE.ConeGeometry(0.04,0.1,8,1);
     boidG.rotateX(Math.PI / 2.);
     const boidM = new THREE.ShaderMaterial({wireframe:true});
     const mesh = new THREE.Mesh(boidG, boidM);
+    mesh.velocity = new THREE.Vector3(
+        Math.random() - 0.5, Math.random() - 0.5,Math.random() - 0.5
+    ).normalize();
     scene.add(mesh);
     boids.push(mesh);
  }
-
-
-const velocities = new Float32Array(boids.length * 3);
-
-for (let i = 0; i < boids.length; i++) {
-    const initVel = new THREE.Vector3(
-        Math.random() - 0.5, Math.random() - 0.5,Math.random() - 0.5
-    ).normalize();
-    velocities[3*i] = initVel.x
-    velocities[3*i+1] = initVel.y
-    velocities[3*i+2] = initVel.z
-}
 
 /**
  * update boids
@@ -218,41 +213,69 @@ for (let i = 0; i < boids.length; i++) {
  * rules: https://en.wikipedia.org/wiki/Boids
  */
 
-
 const moveBoids = (_, deltaTime) => {
     // Update velocities
+    const boundingBox = debugObject.boundingBox;
+    
+    console.log(boundingBox.width)
     for (let i = 0; i < boids.length; i++){
+        const boid = boids[i];
         // seperation
+        const {seperation, alignment, cohesion} = debugObject;
+        let seperationDelta = new THREE.Vector3();
+        let alignmentDelta = new THREE.Vector3();
+        let cohesionMeanPosition = new THREE.Vector3();
+        let cohesionCount = 0;
+        const boidV = boids[i].velocity.clone();
+        for (let j = 0; j < boids.length; j++) {
+            if (j === i) {
+                continue;
+            }
+            const pos = boids[j].position.clone();
+            pos.sub(boid.position);
 
+            const dist = pos.length();
+            if (dist <= seperation.range) {
+                pos.multiplyScalar((seperation.range - dist)/ seperation.range);
+                seperationDelta.add(pos)
+            }
+            if (dist <= alignment.range) {
+                alignmentDelta.add(boids[j].velocity.clone().sub(boidV))
+            }
+            if (dist <= cohesion.range) {
+                cohesionMeanPosition.add(boids[j].position)
+                cohesionCount++;
+            }
+        }
+        seperationDelta.normalize().multiplyScalar(- deltaTime * seperation.power);
+        alignmentDelta.normalize().multiplyScalar(deltaTime * alignment.power);
+        const cohesionDelta = cohesionCount > 0 ? cohesionMeanPosition
+            .sub(boid.position)
+            .normalize()
+            .multiplyScalar(deltaTime * cohesion.power / cohesionCount) : new THREE.Vector3();
+
+        // Apply Boid acceleration changes
+        const acceleration = cohesionDelta.add(seperationDelta).add(alignmentDelta);
+         boids[i].velocity.add(acceleration).normalize();
 
         // bounding box
-        if (boids[i].position.x * Math.sign(velocities[3*i]) > debugObject.boundingBox.width) {
-            velocities[3*i] *= -1;
+        if (boids[i].position.x * Math.sign(boids[i].velocity.x) >boundingBox.width) {
+            boids[i].velocity.x *= -1;
         }
-        if (boids[i].position.y * Math.sign(velocities[3*i+1]) > debugObject.boundingBox.height) {
-            velocities[3*i+1] *= -1;
+        if (boids[i].position.y * Math.sign(boids[i].velocity.y) >boundingBox.height) {
+            boids[i].velocity.y *= -1;
         }
-        if (boids[i].position.z * Math.sign(velocities[3*i+2]) > debugObject.boundingBox.length) {
-            velocities[3*i+2] *= -1;
+        if (boids[i].position.z * Math.sign(boids[i].velocity.z) >boundingBox.length) {
+            boids[i].velocity.z *= -1;
         }
     }
     // Update positions
     for (let i = 0; i < boids.length; i++){
-        boids[i].position.x += deltaTime*velocities[3*i];
-        if (boids[i].position.x * Math.sign(velocities[3*i]) > 3) {
-            velocities[3*i] *= -1;
-        }
-        boids[i].position.y += deltaTime*velocities[3*i+1];
-        if (boids[i].position.y * Math.sign(velocities[3*i+1]) > 3) {
-            velocities[3*i+1] *= -1;
-        }
-        boids[i].position.z += deltaTime*velocities[3*i+2];
-        if (boids[i].position.z * Math.sign(velocities[3*i+2]) > 3) {
-            velocities[3*i+2] *= -1;
-        }
-        const dir = new THREE.Vector3(velocities[3*i],velocities[3*i+1],velocities[3*i+2]).add(boids[i].position)
-        boids[i].lookAt(dir);
-        boids[i].matrixWorldNeedsUpdate = true;
+        const boid = boids[i];
+        const boidV = boids[i].velocity.clone().multiplyScalar(deltaTime);
+        boid.position.add(boidV);
+        boidV.add(boid.position); 
+        boid.lookAt(boidV);
     }
 
 }
@@ -263,6 +286,7 @@ const moveBoids = (_, deltaTime) => {
 const clock = new THREE.Clock()
 const tick = () =>
 {
+    stats.begin()
     const deltaTime = controls.enabled * debugObject.timeSpeed * clock.getDelta();
     timeTracker.elapsedTime += deltaTime;
 
@@ -275,6 +299,7 @@ const tick = () =>
 
     // Call tick again on the next frame
     window.requestAnimationFrame(tick)
+    stats.end()
 }
 
 tick()
