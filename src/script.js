@@ -83,6 +83,41 @@ window.addEventListener('dblclick', () => {
     }
 })
 
+
+ /**
+  * Boids
+  */
+
+ const boids = []
+ const onUpdateBoidCount = (boidCount) => {
+     // add boids
+     while (boids.length < boidCount) {
+         const boidG = new THREE.ConeGeometry(0.04,0.1,8,1);
+         boidG.rotateX(Math.PI / 2.);
+         const boidM = new THREE.ShaderMaterial({wireframe:true});
+         const mesh = new THREE.Mesh(boidG, boidM);
+         const boundingBox = configObject.boundingBox;
+         mesh.position.multiplyVectors(new THREE.Vector3(
+             Math.random() - 0.5,
+             Math.random() - 0.5,
+             Math.random() - 0.5
+         ).multiplyScalar(2.), new THREE.Vector3(
+             boundingBox.width,
+             boundingBox.height,
+             boundingBox.length
+         ));
+         mesh.velocity = new THREE.Vector3(
+             Math.random() - 0.5, Math.random() - 0.5,Math.random() - 0.5
+         ).normalize();
+         scene.add(mesh);
+         boids.push(mesh);
+     }
+     // remove boids
+     while (boids.length > boidCount) {
+         scene.remove(boids.pop())
+     }
+ }
+
 /**
  * Setup camera
  */
@@ -98,8 +133,9 @@ controls.enabled = true;
  * Debug
  */
 
-const debugObject = {
+const configObject = {
     timeSpeed: 1.0,
+    boidCount: 10,
     boundingBox: {
         width: 3,
         length: 3,
@@ -119,16 +155,19 @@ const debugObject = {
     }
 }
 const gui = new GUI();
-gui.add(debugObject, 'timeSpeed').min(0).max(3).step(0.1);
+const simulation = gui.addFolder( 'Simulation' );
+simulation.add(configObject, 'timeSpeed').min(0).max(3).step(0.1);
+simulation.add(configObject, 'boidCount').min(5).max(1000).step(1).onChange(onUpdateBoidCount);
+onUpdateBoidCount(configObject.boidCount)
 const seperation = gui.addFolder( 'Seperation' );
-seperation.add(debugObject.seperation, 'power').min(0).max(6).step(0.1);
-seperation.add(debugObject.seperation, 'range').min(0).max(1).step(0.05);
+seperation.add(configObject.seperation, 'power').min(0).max(6).step(0.1);
+seperation.add(configObject.seperation, 'range').min(0).max(1).step(0.05);
 const alignment = gui.addFolder( 'Alignment' );
-alignment.add(debugObject.alignment, 'power').min(0).max(3).step(0.1);
-alignment.add(debugObject.alignment, 'range').min(0).max(3).step(0.1);
+alignment.add(configObject.alignment, 'power').min(0).max(3).step(0.1);
+alignment.add(configObject.alignment, 'range').min(0).max(3).step(0.1);
 const cohesion = gui.addFolder( 'Cohesion' );
-cohesion.add(debugObject.cohesion, 'power').min(0).max(3).step(0.1);
-cohesion.add(debugObject.cohesion, 'range').min(0).max(3).step(0.1);
+cohesion.add(configObject.cohesion, 'power').min(0).max(3).step(0.1);
+cohesion.add(configObject.cohesion, 'range').min(0).max(3).step(0.1);
 
 /**
  * Loading overlay
@@ -178,34 +217,17 @@ loadingManager.onProgress = (_, itemsLoaded, itemsTotal) =>
  scene.add(boxMesh);
  const updateBoundingBox = () => {
     boxMesh.scale.set(
-        2*debugObject.boundingBox.width,
-        2*debugObject.boundingBox.height,
-        2*debugObject.boundingBox.length)
+        2*configObject.boundingBox.width,
+        2*configObject.boundingBox.height,
+        2*configObject.boundingBox.length)
     boxMesh.matrixWorldNeedsUpdate = true
  }
  updateBoundingBox()
  const box = gui.addFolder( 'Bounding Box' );
- box.add(debugObject.boundingBox, 'width').min(1).max(5).step(0.1).onChange(updateBoundingBox);
- box.add(debugObject.boundingBox, 'length').min(1).max(5).step(0.1).onChange(updateBoundingBox);
- box.add(debugObject.boundingBox, 'height').min(1).max(5).step(0.1).onChange(updateBoundingBox);
+ box.add(configObject.boundingBox, 'width').min(1).max(5).step(0.1).onChange(updateBoundingBox);
+ box.add(configObject.boundingBox, 'length').min(1).max(5).step(0.1).onChange(updateBoundingBox);
+ box.add(configObject.boundingBox, 'height').min(1).max(5).step(0.1).onChange(updateBoundingBox);
 
- /**
-  * Boids
-  */
-
- const boids = []
- const boidCount = 200;
- while (boids.length < boidCount) {
-    const boidG = new THREE.ConeGeometry(0.04,0.1,8,1);
-    boidG.rotateX(Math.PI / 2.);
-    const boidM = new THREE.ShaderMaterial({wireframe:true});
-    const mesh = new THREE.Mesh(boidG, boidM);
-    mesh.velocity = new THREE.Vector3(
-        Math.random() - 0.5, Math.random() - 0.5,Math.random() - 0.5
-    ).normalize();
-    scene.add(mesh);
-    boids.push(mesh);
- }
 
 /**
  * update boids
@@ -215,13 +237,13 @@ loadingManager.onProgress = (_, itemsLoaded, itemsTotal) =>
 
 const moveBoids = (_, deltaTime) => {
     // Update velocities
-    const boundingBox = debugObject.boundingBox;
+    const boundingBox = configObject.boundingBox;
     
     console.log(boundingBox.width)
     for (let i = 0; i < boids.length; i++){
         const boid = boids[i];
         // seperation
-        const {seperation, alignment, cohesion} = debugObject;
+        const {seperation, alignment, cohesion} = configObject;
         let seperationDelta = new THREE.Vector3();
         let alignmentDelta = new THREE.Vector3();
         let cohesionMeanPosition = new THREE.Vector3();
@@ -287,7 +309,7 @@ const clock = new THREE.Clock()
 const tick = () =>
 {
     stats.begin()
-    const deltaTime = controls.enabled * debugObject.timeSpeed * clock.getDelta();
+    const deltaTime = controls.enabled * configObject.timeSpeed * clock.getDelta();
     timeTracker.elapsedTime += deltaTime;
 
     // update controls
