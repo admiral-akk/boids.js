@@ -83,7 +83,6 @@ window.addEventListener('dblclick', () => {
     }
 })
 
-
  /**
   * Boids
   */
@@ -92,7 +91,7 @@ window.addEventListener('dblclick', () => {
  const onUpdateBoidCount = (boidCount) => {
      // add boids
      while (boids.length < boidCount) {
-         const boidG = new THREE.ConeGeometry(0.04,0.1,8,1);
+         const boidG = new THREE.ConeGeometry(0.04,0.2,8,1);
          boidG.rotateX(Math.PI / 2.);
          const boidM = new THREE.ShaderMaterial({wireframe:true});
          const mesh = new THREE.Mesh(boidG, boidM);
@@ -115,7 +114,7 @@ window.addEventListener('dblclick', () => {
      }
      // remove boids
      while (boids.length > boidCount) {
-         scene.remove(boids.pop())
+         scene.remove(boids.shift())
      }
  }
 
@@ -123,9 +122,9 @@ window.addEventListener('dblclick', () => {
  * Setup camera
  */
 const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height);
-camera.position.x = 4;
-camera.position.y = 4;
-camera.position.z = 4;
+camera.position.x = 8;
+camera.position.y = 11;
+camera.position.z = 8;
 scene.add(camera);
 const controls = new OrbitControls(camera, renderer.domElement)
 controls.enabled = true;
@@ -135,16 +134,19 @@ controls.enabled = true;
  */
 
 const configObject = {
-    timeSpeed: 1.0,
-    boidCount: 10,
+    timeSpeed: 3.0,
+    boidCount: 400,
     boundingBox: {
-        width: 3,
-        length: 3,
+        width: 6,
+        length: 6,
         height: 3
+    },
+    spheres: {
+        count: 10,
     },
     seperation: {
         power: 4.,
-        range: 0.1,
+        range: 0.25,
     },
     alignment: {
         power: 0.6,
@@ -153,6 +155,11 @@ const configObject = {
     cohesion: {
         power: 1.5,
         range: 3.,
+    },
+    collision: {
+        power: 40.,
+        range: 1.5,
+
     }
 }
 const gui = new GUI();
@@ -169,6 +176,10 @@ alignment.add(configObject.alignment, 'range').min(0).max(3).step(0.1);
 const cohesion = gui.addFolder( 'Cohesion' );
 cohesion.add(configObject.cohesion, 'power').min(0).max(3).step(0.1);
 cohesion.add(configObject.cohesion, 'range').min(0).max(3).step(0.1);
+const collision = gui.addFolder( 'Collision' );
+collision.add(configObject.collision, 'power').min(0).max(30).step(0.1);
+collision.add(configObject.collision, 'range').min(0).max(3).step(0.1);
+
 
 /**
  * Loading overlay
@@ -207,14 +218,15 @@ loadingManager.onProgress = (_, itemsLoaded, itemsTotal) =>
     }
  };
 
- /**
-  * Bounding Box
-  */
+/**
+ * Obstacles
+ */
 
-
+// bounding box
  const boxG = new THREE.BoxGeometry(1,1,1);
- const boxM = new THREE.MeshBasicMaterial({wireframe: true, color: 0x0000ff})
+ const boxM = new THREE.MeshBasicMaterial({wireframe: true, color: 0x0000ff, side: THREE.DoubleSide})
  const boxMesh = new THREE.Mesh(boxG, boxM);
+ boxMesh.layers.enable(1);
  scene.add(boxMesh);
  const updateBoundingBox = () => {
     boxMesh.scale.set(
@@ -228,6 +240,26 @@ loadingManager.onProgress = (_, itemsLoaded, itemsTotal) =>
  box.add(configObject.boundingBox, 'width').min(1).max(5).step(0.1).onChange(updateBoundingBox);
  box.add(configObject.boundingBox, 'length').min(1).max(5).step(0.1).onChange(updateBoundingBox);
  box.add(configObject.boundingBox, 'height').min(1).max(5).step(0.1).onChange(updateBoundingBox);
+
+ // spheres
+const colliders = [boxMesh]
+const updateSpheres = () => {
+    while (colliders.length < configObject.spheres.count  + 1) {
+        const sphereG = new THREE.SphereGeometry();
+        const sphereM = new THREE.MeshBasicMaterial({ color: 0x0000ff})
+        const sphereMesh = new THREE.Mesh(sphereG, sphereM);
+        sphereMesh.position.multiplyVectors(sphereMesh.position.random().subScalar(0.5),boxMesh.scale).multiplyScalar(0.7);
+        sphereMesh.layers.enable(1);
+        scene.add(sphereMesh);
+        colliders.push(sphereMesh);
+    }
+    while (colliders.length > configObject.spheres.count  + 1) {
+        scene.remove( colliders.pop());
+    }
+}
+const spheres = gui.addFolder( 'Spheres' );
+spheres.add(configObject.spheres, 'count').min(0).max(10).step(1).onChange(updateSpheres);
+updateSpheres();
 
 
 /**
@@ -243,8 +275,7 @@ const moveBoids = (_, deltaTime) => {
     console.log(boundingBox.width)
     for (let i = 0; i < boids.length; i++){
         const boid = boids[i];
-        // seperation
-        const {seperation, alignment, cohesion} = configObject;
+        const {seperation, alignment, cohesion, collision} = configObject;
         let seperationDelta = new THREE.Vector3();
         let alignmentDelta = new THREE.Vector3();
         let cohesionMeanPosition = new THREE.Vector3();
@@ -279,6 +310,20 @@ const moveBoids = (_, deltaTime) => {
 
         // Apply Boid acceleration changes
         const acceleration = cohesionDelta.add(seperationDelta).add(alignmentDelta);
+
+        // avoid walls
+        const raycaster = new THREE.Raycaster(boid.position, boid.velocity);
+        raycaster.layers.set(1);
+        const intersection = raycaster.intersectObjects( colliders);
+        console.log(intersection[0]);
+        if (intersection.length > 0 && intersection[0].distance < collision.range) {
+            acceleration.add(
+                intersection[0].normal
+                    .multiplyScalar(collision.power * 
+                        (collision.range - intersection[0].distance) / intersection[0].distance)
+                    )
+        }
+
         boid.nextVelocity.add(acceleration).normalize();
 
         // bounding box
