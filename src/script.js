@@ -127,7 +127,7 @@ camera.position.y = 11;
 camera.position.z = 8;
 scene.add(camera);
 const controls = new OrbitControls(camera, renderer.domElement)
-controls.enabled = true;
+controls.enabled = false;
 
 /**
  * Debug
@@ -157,9 +157,15 @@ const configObject = {
         range: 3.,
     },
     collision: {
+        power: 20.,
+        range: 2.5,
+    },
+    prey: {
         power: 40.,
         range: 1.5,
-
+    },
+    center: {
+        power: 0.005,
     }
 }
 const gui = new GUI();
@@ -177,8 +183,13 @@ const cohesion = gui.addFolder( 'Cohesion' );
 cohesion.add(configObject.cohesion, 'power').min(0).max(3).step(0.1);
 cohesion.add(configObject.cohesion, 'range').min(0).max(3).step(0.1);
 const collision = gui.addFolder( 'Collision' );
-collision.add(configObject.collision, 'power').min(0).max(30).step(0.1);
+collision.add(configObject.collision, 'power').min(0).max(50).step(0.1);
 collision.add(configObject.collision, 'range').min(0).max(3).step(0.1);
+const prey = gui.addFolder( 'Prey' );
+prey.add(configObject.prey, 'power').min(0).max(50).step(0.1);
+prey.add(configObject.prey, 'range').min(0).max(5).step(0.1);
+const center = gui.addFolder( 'Center' );
+center.add(configObject.center, 'power').min(0).max(0.005).step(0.001);
 
 
 /**
@@ -267,15 +278,38 @@ updateSpheres();
  * 
  * rules: https://en.wikipedia.org/wiki/Boids
  */
+const mouseRaycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+function onPointerMove( event ) {
+
+	// calculate pointer position in normalized device coordinates
+	// (-1 to +1) for both components
+
+	pointer.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+	pointer.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+}
+window.addEventListener( 'pointermove', onPointerMove );
+
+var mouseActive = false;
+
+window.addEventListener('pointerdown', (event) => {
+    mouseActive = true;
+  });
+  window.addEventListener('pointerup', (event) => {
+      mouseActive = false;
+    });
 
 const moveBoids = (_, deltaTime) => {
+    mouseRaycaster.setFromCamera( pointer, camera );
+    const mouseLine = new THREE.Line3( mouseRaycaster.ray.direction.add(camera.position), camera.position);
     // Update velocities
     const boundingBox = configObject.boundingBox;
     
     console.log(boundingBox.width)
     for (let i = 0; i < boids.length; i++){
         const boid = boids[i];
-        const {seperation, alignment, cohesion, collision} = configObject;
+        const {seperation, alignment, cohesion, collision, prey, center} = configObject;
         let seperationDelta = new THREE.Vector3();
         let alignmentDelta = new THREE.Vector3();
         let cohesionMeanPosition = new THREE.Vector3();
@@ -317,15 +351,30 @@ const moveBoids = (_, deltaTime) => {
         const intersection = raycaster.intersectObjects( colliders);
         console.log(intersection[0]);
         if (intersection.length > 0 && intersection[0].distance < collision.range) {
+            
             acceleration.add(
-                intersection[0].normal
+                intersection[0].normal.add(boid.velocity).normalize()
                     .multiplyScalar(collision.power * 
                         (collision.range - intersection[0].distance) / intersection[0].distance)
                     )
         }
 
-        boid.nextVelocity.add(acceleration).normalize();
+        // avoid pointer if active 
+        if (mouseActive) {
+        const target = new THREE.Vector3();
+        mouseLine.closestPointToPoint( boid.position, false, target );
+        const mouseDistance = prey.range - target.distanceTo( boid.position );
 
+        if (mouseDistance > 0) {
+            acceleration.add(target.sub(boid.position).multiplyScalar(-prey.power * mouseDistance / prey.range))
+        }
+        }
+
+        // center bias
+        acceleration.add(new THREE.Vector3().sub(boid.position).normalize().multiplyScalar(center.power))
+
+
+        boid.nextVelocity.add(acceleration).normalize();
         // bounding box
         if (boid.position.x * Math.sign(boid.velocity.x) > boundingBox.width) {
             boid.nextVelocity.x *= -1;
@@ -355,7 +404,7 @@ const clock = new THREE.Clock()
 const tick = () =>
 {
     stats.begin()
-    const deltaTime = controls.enabled * configObject.timeSpeed * clock.getDelta();
+    const deltaTime = timeTracker.enabled * configObject.timeSpeed * clock.getDelta();
     timeTracker.elapsedTime += deltaTime;
 
     // update controls
