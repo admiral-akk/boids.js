@@ -109,6 +109,7 @@ window.addEventListener('dblclick', () => {
          mesh.velocity = new THREE.Vector3(
              Math.random() - 0.5, Math.random() - 0.5,Math.random() - 0.5
          ).normalize();
+         mesh.nextVelocity = new THREE.Vector3()
          scene.add(mesh);
          boids.push(mesh);
      }
@@ -278,28 +279,28 @@ const moveBoids = (_, deltaTime) => {
 
         // Apply Boid acceleration changes
         const acceleration = cohesionDelta.add(seperationDelta).add(alignmentDelta);
-         boids[i].velocity.add(acceleration).normalize();
+        boid.nextVelocity.add(acceleration).normalize();
 
         // bounding box
-        if (boids[i].position.x * Math.sign(boids[i].velocity.x) >boundingBox.width) {
-            boids[i].velocity.x *= -1;
+        if (boid.position.x * Math.sign(boid.velocity.x) > boundingBox.width) {
+            boid.nextVelocity.x *= -1;
         }
-        if (boids[i].position.y * Math.sign(boids[i].velocity.y) >boundingBox.height) {
-            boids[i].velocity.y *= -1;
+        if (boid.position.y * Math.sign(boid.velocity.y) > boundingBox.height) {
+            boid.nextVelocity.y *= -1;
         }
-        if (boids[i].position.z * Math.sign(boids[i].velocity.z) >boundingBox.length) {
-            boids[i].velocity.z *= -1;
+        if (boid.position.z * Math.sign(boid.velocity.z) > boundingBox.length) {
+            boid.nextVelocity.z *= -1;
         }
     }
-    // Update positions
-    for (let i = 0; i < boids.length; i++){
-        const boid = boids[i];
-        const boidV = boids[i].velocity.clone().multiplyScalar(deltaTime);
+
+    // Update position + velocity
+    for (const boid of boids) {
+        const boidV = boid.velocity.clone().multiplyScalar(deltaTime);
         boid.position.add(boidV);
         boidV.add(boid.position); 
         boid.lookAt(boidV);
+        boid.velocity = boid.nextVelocity;
     }
-
 }
 
 /**
