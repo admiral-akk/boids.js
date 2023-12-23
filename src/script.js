@@ -83,9 +83,9 @@ window.addEventListener('dblclick', () => {
  * Setup camera
  */
 const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height);
-camera.position.x = 1;
-camera.position.y = 1;
-camera.position.z = 1;
+camera.position.x = 4;
+camera.position.y = 4;
+camera.position.z = 4;
 scene.add(camera);
 const controls = new OrbitControls(camera, renderer.domElement)
 controls.enabled = true;
@@ -96,6 +96,11 @@ controls.enabled = true;
 
 const debugObject = {
     timeSpeed: 1.0,
+    boundingBox: {
+        width: 3,
+        length: 3,
+        height: 3
+    },
     seperation: {
         power: 1.,
         range: 1.,
@@ -108,7 +113,7 @@ const debugObject = {
         power: 1.,
         range: 1.,
     }
-    }
+}
 const gui = new GUI();
 gui.add(debugObject, 'timeSpeed').min(0).max(3).step(0.1);
 const seperation = gui.addFolder( 'Seperation' );
@@ -159,13 +164,35 @@ loadingManager.onProgress = (_, itemsLoaded, itemsTotal) =>
  };
 
  /**
+  * Bounding Box
+  */
+
+
+ const boxG = new THREE.BoxGeometry(1,1,1);
+ const boxM = new THREE.MeshBasicMaterial({wireframe: true, color: 0x0000ff})
+ const boxMesh = new THREE.Mesh(boxG, boxM);
+ scene.add(boxMesh);
+ const updateBoundingBox = () => {
+    boxMesh.scale.set(
+        2*debugObject.boundingBox.width,
+        2*debugObject.boundingBox.height,
+        2*debugObject.boundingBox.length)
+    boxMesh.matrixWorldNeedsUpdate = true
+ }
+ updateBoundingBox()
+ const box = gui.addFolder( 'Bounding Box' );
+ box.add(debugObject.boundingBox, 'width').min(1).max(5).step(0.1).onChange(updateBoundingBox);
+ box.add(debugObject.boundingBox, 'length').min(1).max(5).step(0.1).onChange(updateBoundingBox);
+ box.add(debugObject.boundingBox, 'height').min(1).max(5).step(0.1).onChange(updateBoundingBox);
+
+ /**
   * Boids
   */
 
  const boids = []
- const boidCount = 10;
+ const boidCount = 100;
  while (boids.length < boidCount) {
-    const boidG = new THREE.ConeGeometry(0.4,1.0,8,1);
+    const boidG = new THREE.ConeGeometry(0.04,0.1,8,1);
     boidG.rotateX(Math.PI / 2.);
     const boidM = new THREE.ShaderMaterial({wireframe:true});
     const mesh = new THREE.Mesh(boidG, boidM);
@@ -195,15 +222,17 @@ for (let i = 0; i < boids.length; i++) {
 const moveBoids = (_, deltaTime) => {
     // Update velocities
     for (let i = 0; i < boids.length; i++){
+        // seperation
+
 
         // bounding box
-        if (boids[i].position.x * Math.sign(velocities[3*i]) > 3) {
+        if (boids[i].position.x * Math.sign(velocities[3*i]) > debugObject.boundingBox.width) {
             velocities[3*i] *= -1;
         }
-        if (boids[i].position.y * Math.sign(velocities[3*i+1]) > 3) {
+        if (boids[i].position.y * Math.sign(velocities[3*i+1]) > debugObject.boundingBox.height) {
             velocities[3*i+1] *= -1;
         }
-        if (boids[i].position.z * Math.sign(velocities[3*i+2]) > 3) {
+        if (boids[i].position.z * Math.sign(velocities[3*i+2]) > debugObject.boundingBox.length) {
             velocities[3*i+2] *= -1;
         }
     }
