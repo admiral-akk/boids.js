@@ -327,7 +327,7 @@ const moveBoids = (_, deltaTime) => {
                 pos.multiplyScalar((seperation.range - dist)/ seperation.range);
                 seperationDelta.add(pos)
             }
-            if (dist <= alignment.range) {
+            if (dist <= alignment.range && pos.angleTo(boid.velocity) < Math.PI / 6) {
                 alignmentDelta.add(boids[j].velocity.clone().sub(boidV))
             }
             if (dist <= cohesion.range) {
@@ -349,9 +349,7 @@ const moveBoids = (_, deltaTime) => {
         const raycaster = new THREE.Raycaster(boid.position, boid.velocity);
         raycaster.layers.set(1);
         const intersection = raycaster.intersectObjects( colliders);
-        console.log(intersection[0]);
         if (intersection.length > 0 && intersection[0].distance < collision.range) {
-            
             acceleration.add(
                 intersection[0].normal.add(boid.velocity).normalize()
                     .multiplyScalar(collision.power * 
