@@ -94,10 +94,32 @@ controls.enabled = true;
  * Debug
  */
 
-const debugObject = {timeSpeed: 1.0}
+const debugObject = {
+    timeSpeed: 1.0,
+    seperation: {
+        power: 1.,
+        range: 1.,
+    },
+    alignment: {
+        power: 1.,
+        range: 1.,
+    },
+    cohesion: {
+        power: 1.,
+        range: 1.,
+    }
+    }
 const gui = new GUI();
 gui.add(debugObject, 'timeSpeed').min(0).max(3).step(0.1);
-
+const seperation = gui.addFolder( 'Seperation' );
+seperation.add(debugObject.seperation, 'power').min(0).max(3).step(0.1);
+seperation.add(debugObject.seperation, 'range').min(0).max(3).step(0.1);
+const alignment = gui.addFolder( 'Alignment' );
+alignment.add(debugObject.alignment, 'power').min(0).max(3).step(0.1);
+alignment.add(debugObject.alignment, 'range').min(0).max(3).step(0.1);
+const cohesion = gui.addFolder( 'Cohesion' );
+cohesion.add(debugObject.cohesion, 'power').min(0).max(3).step(0.1);
+cohesion.add(debugObject.cohesion, 'range').min(0).max(3).step(0.1);
 
 /**
  * Loading overlay
@@ -136,17 +158,74 @@ loadingManager.onProgress = (_, itemsLoaded, itemsTotal) =>
     }
  };
 
+ /**
+  * Boids
+  */
+
+ const boids = []
+ const boidCount = 10;
+ while (boids.length < boidCount) {
+    const boidG = new THREE.ConeGeometry(0.4,1.0,8,1);
+    boidG.rotateX(Math.PI / 2.);
+    const boidM = new THREE.ShaderMaterial({wireframe:true});
+    const mesh = new THREE.Mesh(boidG, boidM);
+    scene.add(mesh);
+    boids.push(mesh);
+ }
+
+
+const velocities = new Float32Array(boids.length * 3);
+
+for (let i = 0; i < boids.length; i++) {
+    const initVel = new THREE.Vector3(
+        Math.random() - 0.5, Math.random() - 0.5,Math.random() - 0.5
+    ).normalize();
+    velocities[3*i] = initVel.x
+    velocities[3*i+1] = initVel.y
+    velocities[3*i+2] = initVel.z
+}
 
 /**
- *  Box
+ * update boids
+ * 
+ * rules: https://en.wikipedia.org/wiki/Boids
  */
-const boxG = new THREE.BoxGeometry()
-const boxM = new THREE.MeshBasicMaterial({map: texture})
-const boxMesh = new THREE.Mesh(boxG, boxM)
-scene.add(boxMesh)
 
-const rotateBox = (time) => {
-    boxMesh.setRotationFromEuler(new THREE.Euler(0, time, 0)) 
+
+const moveBoids = (_, deltaTime) => {
+    // Update velocities
+    for (let i = 0; i < boids.length; i++){
+
+        // bounding box
+        if (boids[i].position.x * Math.sign(velocities[3*i]) > 3) {
+            velocities[3*i] *= -1;
+        }
+        if (boids[i].position.y * Math.sign(velocities[3*i+1]) > 3) {
+            velocities[3*i+1] *= -1;
+        }
+        if (boids[i].position.z * Math.sign(velocities[3*i+2]) > 3) {
+            velocities[3*i+2] *= -1;
+        }
+    }
+    // Update positions
+    for (let i = 0; i < boids.length; i++){
+        boids[i].position.x += deltaTime*velocities[3*i];
+        if (boids[i].position.x * Math.sign(velocities[3*i]) > 3) {
+            velocities[3*i] *= -1;
+        }
+        boids[i].position.y += deltaTime*velocities[3*i+1];
+        if (boids[i].position.y * Math.sign(velocities[3*i+1]) > 3) {
+            velocities[3*i+1] *= -1;
+        }
+        boids[i].position.z += deltaTime*velocities[3*i+2];
+        if (boids[i].position.z * Math.sign(velocities[3*i+2]) > 3) {
+            velocities[3*i+2] *= -1;
+        }
+        const dir = new THREE.Vector3(velocities[3*i],velocities[3*i+1],velocities[3*i+2]).add(boids[i].position)
+        boids[i].lookAt(dir);
+        boids[i].matrixWorldNeedsUpdate = true;
+    }
+
 }
 
 /**
@@ -155,15 +234,14 @@ const rotateBox = (time) => {
 const clock = new THREE.Clock()
 const tick = () =>
 {
-    if (controls.enabled){
-        timeTracker.elapsedTime =  timeTracker.elapsedTime + debugObject.timeSpeed * clock.getDelta();
-    }
+    const deltaTime = controls.enabled * debugObject.timeSpeed * clock.getDelta();
+    timeTracker.elapsedTime += deltaTime;
 
     // update controls
     controls.update()
 
     // Render scene
-    rotateBox(timeTracker.elapsedTime)
+    moveBoids(timeTracker.elapsedTime, deltaTime)
     renderer.render(scene, camera)
 
     // Call tick again on the next frame
