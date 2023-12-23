@@ -190,7 +190,7 @@ prey.add(configObject.prey, 'power').min(0).max(50).step(0.1);
 prey.add(configObject.prey, 'range').min(0).max(5).step(0.1);
 const center = gui.addFolder( 'Center' );
 center.add(configObject.center, 'power').min(0).max(0.005).step(0.001);
-
+gui.hide();
 
 /**
  * Loading overlay
